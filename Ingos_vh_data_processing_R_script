@@ -1,0 +1,33 @@
+#read table works fine here because your mostly following a strict pattern
+vh_df <- read.table("example_data_1.txt", header=F, sep=" ", quote='"', dec=",", na.strings="", colClasses="character", fill=TRUE, strip.white=TRUE, blank.lines.skip=TRUE)
+
+#instead of keeping normal time we keep the unix timestamp -its much more efficient for calculations
+vh_df <- vh_df[,c(9,11,14)]
+colnames(vh_df)<- c('TIME','ID','RSSI')
+
+#we need to remove "," at the end of RSSI
+vh_df$RSSI<-gsub(',','',vh_df$RSSI)
+
+#we convert to numeric to coerce introductions of na's - silly but makes it easier to sort out lines we dont want
+vh_df = lapply(vh_df, as.numeric)
+
+#discard lines with NA values
+vh_df <- as.data.frame(vh_df)
+sdx <- which(!is.na(vh_df$TIME))
+vh_df <- vh_df[sdx,]
+
+# if you want a normal time stamp format (replace UTC with your time zone or leave it just be aware thats the timezone it opperates in now)
+vh_df$TIMEDATE <- as.POSIXct(vh_df$TIME, tz='UTC', origin='1970-01-01 00:00:00')
+
+# for example for Rybachy summetime time zone is 'Europe/Berlin'
+vh_df$TIMEDATE <- as.POSIXct(vh_df$TIME, tz='Europe/Berlin', origin='1970-01-01 00:00:00')
+
+# subset only particular ID
+# mask for subsetting
+ID_25 <- which(vh_df$ID==7001001025)
+vh_df_ID_25 <- vh_df[ID_25,]
+
+# plot a particular bird's activity
+x <- vh_df_ID_25$TIMEDATE
+y <- vh_df_ID_25$RSSI
+plot(x, y)
