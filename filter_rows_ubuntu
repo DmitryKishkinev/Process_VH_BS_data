@@ -1,0 +1,1 @@
+sed -n '/BS_RSSI/p' all_row_file.log > filtered_data_file
