@@ -1,0 +1,98 @@
+# choose dir with data files, list all files, read them in
+cdir<-choose.dir(default = "", caption = "Choose dir with data files")
+myfiles <- list.files(path = cdir, pattern = NULL, all.files = FALSE, full.names = FALSE, recursive = FALSE, ignore.case = FALSE)
+
+# also go to your folder with data and setwd(). just in case (not sure if needed 100%)
+
+# pool all files into a big df 
+all_data_df = do.call(rbind, lapply(myfiles, 
+                                    function(x) 
+                                    read.table(x, header=F, sep=" ", quote='"', 
+                                    dec=",", na.strings="", colClasses="character", 
+                                    fill=TRUE, strip.white=TRUE, blank.lines.skip=TRUE, 
+                                    stringsAsFactors = FALSE)))
+
+
+#instead of keeping normal time we keep the unix timestamp -its much more efficient for calculations
+# discard all but columns with timestamp, tag ID, and RSSI. Rename columns. 
+# note a comma junk in RSSI column
+vh_df <- all_data_df[,c(9,11,14)]
+colnames(vh_df)<- c('TIME','ID','RSSI')
+
+#we need to remove "," at the end of RSSI
+vh_df$RSSI<-gsub(',','',vh_df$RSSI)
+
+#we convert to numeric to coerce introductions of na's - silly but makes it easier to sort out lines we dont want
+vh_df = lapply(vh_df, as.numeric)
+
+#discard lines with NA values
+vh_df <- as.data.frame(vh_df)
+sdx <- which(!is.na(vh_df$TIME))
+vh_df <- vh_df[sdx,]
+
+# round time stamps (no decimals)
+vh_df$TIME <- round(vh_df$TIME, digits = 0)
+
+# discard all duplicates. They occur to be with 100% unique rows in this case
+vh_deduped <- unique( vh_df[ , 1:3 ] )
+
+# save all deduped [de-duplicated] data
+write.csv(vh_deduped, "all_data_ID_23-25_noNApadding.csv")
+
+#same job with duplicate() function
+#vh_deduped <- vh_df[duplicated(vh_df), ]
+
+# if you want a normal time stamp format (replace UTC with your time zone or leave it just be aware thats the timezone it opperates in now)
+#vh_df$TIMEDATE <- as.POSIXct(vh_df$TIME, tz='UTC', origin='1970-01-01 00:00:00')
+
+# for example for Rybachy summetime time zone is 'Europe/Berlin'
+#vh_df$TIMEDATE <- as.POSIXct(vh_df$TIME, tz='Europe/Berlin', origin='1970-01-01 00:00:00')
+
+# subset only particular bird ID
+# create a mask for subsetting
+ID_25 <- which(vh_deduped$ID==7001001025)
+vh_df_ID_25 <- vh_deduped[ID_25,]
+
+#make sure df is in an ascending order on timestamp
+vh_df_ID_25 <- vh_df_ID_25[order(vh_df_ID_25$TIME),]
+
+
+# padding [filling gaps] the time series with NAs by creating a new df with
+# the same length from the first til the last timestamps with NAs for each sec and merge the two dfs on one column
+first_tst = head(vh_df_ID_25$TIME,1)
+last_tst = tail(vh_df_ID_25$TIME,1)
+# creating dummy NAs containing df with NAs for each second
+df2<-data.frame(DateTime=seq(from = as.POSIXct(first_tst, tz='Europe/Berlin', 
+                                               origin='1970-01-01 00:00:00'),
+                             to = as.POSIXct(last_tst, tz='Europe/Berlin', 
+                                             origin='1970-01-01 00:00:00'), by = "sec"))
+
+# convert your bird ID df to Rybachy summetime time zone is 'Europe/Berlin' and add it as a separate column
+vh_df_ID_25$DateTime <- as.POSIXct(vh_df_ID_25$TIME, tz='Europe/Berlin', 
+                                   origin='1970-01-01 00:00:00')
+
+# merge the two df for NAs padding on DateTime column (make sure it exists)
+vh_df_ID_25_NAspad <- merge(df2, vh_df_ID_25, all=TRUE, by = "DateTime")
+
+# delete two unnecessary columns -> you have the full length df with NAs for seconds where there were no radio hits
+vh_df_ID_25_NAspad$TIMEDATE<-NULL
+vh_df_ID_25_NAspad$ID<-NULL
+
+# save this df for a particular ID as csv file
+write.csv(vh_df_ID_25_NAspad, '25.csv')
+
+# plot a particular bird's activity (whole length of this time series object)
+x <- vh_df_ID_25$DateTime
+y <- vh_df_ID_25$RSSI
+plot(x, y, main="#25")
+
+# zoom in/out, change date and time (ticks on axis x is formatted below). Edit xlim parameter for start and end times
+plot(x, y, main = "#25", 
+     xlim=as.POSIXct(c("2018-08-27 00:00:00","2018-09-02 23:59:59")))
+
+# work with ticks on x (time) axis. Do not like it though. Need ggplot package approach. Fine for now
+axis.POSIXct(side = 1, x = x,
+             at = seq(from = round(x[1], "hour"),
+                      to = x[1] + ceiling(difftime(tail(x, 1), head(x, 1), 
+                                                   units = "hour")),
+                      by = "day"), las = 2)
